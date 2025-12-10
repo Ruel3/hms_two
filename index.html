@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <title>HMS – single-file (Java+DB inside browser)</title>
+  <title>HMS – OOP single file + login</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <style>
     :root{--p:#00796b;--l:#e0f2f1}
@@ -21,17 +21,32 @@
   </style>
 </head>
 <body>
-<header>
-  <h1>Hospital Management System </h1>
+
+<!-- ============ LOGIN SECTION ============ -->
+<section id="loginSect">
+  <h2>Hospital System Login</h2>
+  <form id="loginForm">
+    <input id="userIn" placeholder="User ID" required>
+    <input id="pwdIn"  placeholder="Password" type="password" required>
+    <button>Login</button>
+  </form>
+  <p id="loginMsg"></p>
+</section>
+
+<!-- ============ APPLICATION HEADER (shown after login) ============ -->
+<header id="appHeader" class="hidden">
+  <h1>Hospital Management System</h1>
   <nav>
-    <button onclick="show('reception')">Reception</button>
-    <button onclick="show('nurse')">Nurse</button>
-    <button onclick="show('doctor')">Doctor</button>
-    <button onclick="show('billing')">Billing</button>
+    <button onclick="showPage('reception')"  class="role RECEPTION">Reception</button>
+    <button onclick="showPage('nurse')"      class="role NURSE">Nurse</button>
+    <button onclick="showPage('doctor')"     class="role DOCTOR">Doctor</button>
+    <button onclick="showPage('billing')"    class="role BILLING">Billing</button>
+    <button onclick="doLogout()">Logout</button>
   </nav>
 </header>
 
-<main>
+<main id="appMain" class="hidden">
+
   <!-- RECEPTION -->
   <section id="reception" class="page">
     <h2>Register Patient</h2>
@@ -100,269 +115,203 @@
     <button onclick="searchBill()">Search</button>
     <table id="billTable"></table>
   </section>
+
 </main>
 
-<!-- CheerpJ runtime (will be cached by browser) -->
-<script src="https://cjrtnc.leaningtech.com/3.0rc2/cj3loader.js"></script>
-<!-- SQL.js (WebAssembly) -->
-<script src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.js"></script>
-
 <script>
-/* =========== 1.  BOOTSTRAP CHEERPJ & DB  ================= */
-let db, HMS;   // HMS = Java façade class
+/* ********************************************************************
+ *  BACK-END SIMULATION – PURE JS BUT STRUCTURED IN AN OOP WAY
+ *  (shows exactly where encapsulation, inheritance & polymorphism occur)
+ ******************************************************************** */
 
-async function init() {
-  // 1a. start CheerpJ (Java 11 runtime in browser)
-  await cheerpjInit({mi:true});
-
-  // 1b. create in-memory H2-compatible DB
-  const SQL = await initSqlJs({locateFile: file => `https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/${file}`});
-  db = new SQL.Database();
-
-  // 1c. run schema
-  db.run(`
-  CREATE TABLE patient(
-    id INTEGER PRIMARY KEY AUTO_INCREMENT,
-    patient_id VARCHAR(20) UNIQUE NOT NULL,
-    full_name  VARCHAR(100),
-    age        INTEGER,
-    gender     VARCHAR(10),
-    phone      VARCHAR(30),
-    email      VARCHAR(100),
-    address    VARCHAR(200)
-  );
-
-  CREATE TABLE staff(
-    id          INTEGER PRIMARY KEY AUTO_INCREMENT,
-    staff_id    VARCHAR(20) UNIQUE NOT NULL,
-    name        VARCHAR(100),
-    department  VARCHAR(100),
-    phone       VARCHAR(30),
-    email       VARCHAR(100),
-    staff_type  VARCHAR(20),
-    spec        VARCHAR(100),
-    license_no  VARCHAR(50),
-    shift_info  VARCHAR(50),
-    cert_level  VARCHAR(50)
-  );
-
-  CREATE TABLE appointment(
-    id         INTEGER PRIMARY KEY AUTO_INCREMENT,
-    patient_id VARCHAR(20),
-    doctor_id  VARCHAR(20),
-    dt         TIMESTAMP,
-    status     VARCHAR(20)
-  );
-
-  CREATE TABLE medication(
-    id        INTEGER PRIMARY KEY AUTO_INCREMENT,
-    med_id    VARCHAR(20) UNIQUE,
-    name      VARCHAR(100),
-    stock_qty INTEGER,
-    unit_price DECIMAL(10,2)
-  );
-
-  CREATE TABLE prescription(
-    id         INTEGER PRIMARY KEY AUTO_INCREMENT,
-    patient_id VARCHAR(20),
-    doctor_id  VARCHAR(20),
-    med_id     VARCHAR(20),
-    qty        INTEGER,
-    dosage     VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE billing(
-    id          INTEGER PRIMARY KEY AUTO_INCREMENT,
-    billing_id  VARCHAR(20) UNIQUE,
-    patient_id  VARCHAR(20),
-    total       DECIMAL(10,2),
-    paid        DECIMAL(10,2),
-    balance     DECIMAL(10,2)
-  );
-
-  CREATE TABLE service_item(
-    billing_id  VARCHAR(20),
-    service_name VARCHAR(100),
-    charge      DECIMAL(10,2)
-  );
-
-  INSERT INTO medication(med_id,name,stock_qty,unit_price) VALUES
-   ('M-PARA','Paracetamol 500 mg',200,0.10),
-   ('M-AMOX','Amoxicillin 250 mg',150,0.25);
-  `);
-
-  // 1d. load our tiny Java façade (compiled with CheerpJ ahead-of-time)
-  await cheerpjRunMain("HMS", "/app/hms.jar");
-
-  // 1e. bridge: expose Java methods to JS
-  HMS = await cheerpjImport("HMS");
-  await HMS.init(db);   // pass the DB handle to Java
-  console.log("Java+DB ready");
-}
-init();
-
-/* =========== 2.  JS ↔ JAVA BRIDGE  ======================= */
-async function registerPatient(o){
-  return await HMS.registerPatient(JSON.stringify(o));
-}
-async function scheduleAppointment(o){
-  return await HMS.scheduleAppointment(JSON.stringify(o));
-}
-async function saveTriage(o){
-  return await HMS.saveTriage(JSON.stringify(o));
-}
-async function saveDiagnosis(o){
-  return await HMS.saveDiagnosis(JSON.stringify(o));
-}
-async function prescribe(o){
-  return await HMS.prescribe(JSON.stringify(o));
-}
-async function getBill(patientId){
-  return await HMS.getBill(patientId);
+// ---------- Encapsulation: private props via closures ----------
+class Staff {                       // ****** PARENT CLASS ******
+  #id; #name; #dept; #phone; #email;
+  constructor(id,name,dept,phone,email){
+    this.#id=id; this.#name=name; this.#dept=dept; this.#phone=phone; this.#email=email;
+  }
+  getId(){return this.#id;}
+  getName(){return this.#name;}
+  getDept(){return this.#dept;}
+  // polymorphic method – overridden by sub-classes
+  getRole(){ return "Staff"; }
 }
 
-/* =========== 3.  UI HOOKS  =============================== */
-function show(page){
-  document.querySelectorAll('.page').forEach(s=>s.classList.add('hidden'));
-  document.getElementById(page).classList.remove('hidden');
+// ---------- Inheritance: Doctor is-a Staff ----------
+class Doctor extends Staff {
+  #spec; #license;
+  constructor(id,name,dept,phone,email,spec,license){
+    super(id,name,dept,phone,email);   // reuse parent ctor
+    this.#spec=spec; this.#license=license;
+  }
+  getRole(){return "DOCTOR";}
+  getSpec(){return this.#spec;}
+  getLicense(){return this.#license;}
 }
 
-document.getElementById('regForm').onsubmit = async e =>{
+// ---------- Inheritance: Nurse is-a Staff ----------
+class Nurse extends Staff {
+  #shift; #cert;
+  constructor(id,name,dept,phone,email,shift,cert){
+    super(id,name,dept,phone,email);
+    this.#shift=shift; this.#cert=cert;
+  }
+  getRole(){return "NURSE";}
+}
+
+// ---------- Encapsulation: singleton façade ----------
+class HospitalDB {
+  constructor(){
+    this.patients   = [];   // array of plain objects
+    this.staff      = [];   // array of Staff instances (Doctor/Nurse)
+    this.apps       = [];
+    this.meds       = [];
+    this.bills      = [];
+    this.nextPatId  = 1;
+    this.nextStaffId= 1;
+    this.nextBillId = 1;
+    this.seed();
+  }
+  seed(){
+    // insert some meds
+    this.meds.push({medId:"M-PARA", name:"Paracetamol 500mg", stock:200, price:0.10});
+    this.meds.push({medId:"M-AMOX", name:"Amoxicillin 250mg", stock:150, price:0.25});
+    // insert doctors (polymorphic usage: Staff ref points to Doctor)
+    this.staff.push(new Doctor("D-001","Dr Brown","Cardiology","555111","brown@hms.com","Cardiology","MD-10234"));
+    this.staff.push(new Doctor("D-002","Dr Lee","Paediatrics","555222","lee@hms.com","Paediatrics","MD-20456"));
+    // insert nurses
+    this.staff.push(new Nurse("N-001","Nurse Joy","Emergency","555333","joy@hms.com","Day","RN-1"));
+  }
+  // ---------- CRUD helpers ----------
+  generatePatientId(){ return "P-"+String(this.nextPatId++).padStart(6,'0'); }
+  generateBillingId(){ return "B-"+String(this.nextBillId++).padStart(6,'0'); }
+  findStaffById(id){ return this.staff.find(s=>s.getId()===id); }
+  findMedById(id)  { return this.meds.find(m=>m.medId===id); }
+  findPatientById(id){ return this.patients.find(p=>p.patientId===id); }
+}
+const DB = new HospitalDB();   // single instance
+
+/* ********************************************************************
+ *  LOGIN LOGIC
+ ******************************************************************** */
+const CREDENTIALS = {           // hard-coded for demo
+  "reception1":{pwd:"rec123", role:"RECEPTION"},
+  "nurse1"    :{pwd:"nur123", role:"NURSE"},
+  "doctor1"   :{pwd:"doc123", role:"DOCTOR"},
+  "billing1"  :{pwd:"bil123", role:"BILLING"}
+};
+let CURRENT_USER = null;
+
+document.getElementById('loginForm').onsubmit = e =>{
+  e.preventDefault();
+  const uid = document.getElementById('userIn').value.trim();
+  const pwd = document.getElementById('pwdIn').value.trim();
+  const rec = CREDENTIALS[uid];
+  if(rec && rec.pwd===pwd){
+    CURRENT_USER = {uid, role:rec.role};
+    document.getElementById('loginSect').classList.add('hidden');
+    document.getElementById('appHeader').classList.remove('hidden');
+    document.getElementById('appMain').classList.remove('hidden');
+    // show only role-relevant menus
+    document.querySelectorAll('.role').forEach(btn=>{
+      btn.style.display = btn.classList.contains(CURRENT_USER.role) ? 'inline-block':'none';
+    });
+    showPage('reception');
+  } else {
+    document.getElementById('loginMsg').textContent = 'Invalid credentials';
+  }
+};
+function doLogout(){
+  CURRENT_USER=null;
+  location.reload();
+}
+
+/* ********************************************************************
+ *  NAVIGATION
+ ******************************************************************** */
+function showPage(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+
+/* ********************************************************************
+ *  RECEPTION USE-CASES
+ ******************************************************************** */
+document.getElementById('regForm').onsubmit = e =>{
   e.preventDefault();
   const fd = new FormData(e.target);
   const o = Object.fromEntries(fd.entries());
   o.age = +o.age;
-  const res = await registerPatient(o);
-  document.getElementById('regOut').textContent = res.startsWith('P-')
-     ? `Registered. Patient-ID = ${res}` : 'Error: '+res;
+  const pid = DB.generatePatientId();
+  o.patientId = pid;
+  DB.patients.push(o);
+  document.getElementById('regOut').textContent = `Registered. Patient-ID = ${pid}`;
+  e.target.reset();
 };
 
-document.getElementById('aptForm').onsubmit = async e =>{
+document.getElementById('aptForm').onsubmit = e =>{
   e.preventDefault();
   const fd = new FormData(e.target);
-  const o = {
-    patientId: fd.get('patientId'),
-    doctorId:  fd.get('doctorId'),
-    dateTime:  fd.get('when'),
-    status: 'SCHEDULED'
-  };
-  const res = await scheduleAppointment(o);
-  document.getElementById('aptOut').textContent = res==='ok' ? 'Scheduled' : 'Error: '+res;
+  const patId = fd.get('patientId');
+  const docId = fd.get('doctorId');
+  if(!DB.findPatientById(patId))  { alert('Patient not found'); return; }
+  if(!DB.findStaffById(docId))    { alert('Doctor not found'); return; }
+  DB.apps.push({patientId:patId, doctorId:docId, dateTime:fd.get('when'), status:'SCHEDULED'});
+  document.getElementById('aptOut').textContent = 'Appointment scheduled';
+  e.target.reset();
 };
 
-document.getElementById('triageForm').onsubmit = async e =>{
+/* ********************************************************************
+ *  NURSE TRIAGE
+ ******************************************************************** */
+document.getElementById('triageForm').onsubmit = e =>{
   e.preventDefault();
   const o = Object.fromEntries(new FormData(e.target).entries());
-  const res = await saveTriage(o);
-  document.getElementById('triageOut').textContent = res==='ok' ? 'Saved' : 'Error: '+res;
+  if(!DB.findPatientById(o.patientId)){ alert('Patient not found'); return; }
+  // in real world we would store vitals – here we just acknowledge
+  document.getElementById('triageOut').textContent = 'Triage saved';
+  e.target.reset();
 };
 
-document.getElementById('dxForm').onsubmit = async e =>{
+/* ********************************************************************
+ *  DOCTOR DIAGNOSIS / PRESCRIPTION
+ ******************************************************************** */
+document.getElementById('dxForm').onsubmit = e =>{
   e.preventDefault();
   const o = Object.fromEntries(new FormData(e.target).entries());
-  const res = await saveDiagnosis(o);
-  document.getElementById('dxOut').textContent = res==='ok' ? 'Saved' : 'Error: '+res;
+  if(!DB.findPatientById(o.patientId)){ alert('Patient not found'); return; }
+  document.getElementById('dxOut').textContent = 'Diagnosis saved';
+  e.target.reset();
 };
 
-document.getElementById('rxForm').onsubmit = async e =>{
+document.getElementById('rxForm').onsubmit = e =>{
   e.preventDefault();
   const o = Object.fromEntries(new FormData(e.target).entries());
   o.qty = +o.qty;
-  const res = await prescribe(o);
-  document.getElementById('rxOut').textContent = res==='ok' ? 'Prescribed' : 'Error: '+res;
+  if(!DB.findPatientById(o.patientId)){ alert('Patient not found'); return; }
+  const med = DB.findMedById(o.medId);
+  if(!med){ alert('Medication not found'); return; }
+  if(med.stock < o.qty){ alert('Insufficient stock'); return; }
+  med.stock -= o.qty;
+  DB.bills.push({patientId:o.patientId, service:'Medication '+med.name, charge:med.price*o.qty});
+  document.getElementById('rxOut').textContent = 'Prescribed & stock updated';
+  e.target.reset();
 };
 
-async function searchBill(){
+/* ********************************************************************
+ *  BILLING SEARCH
+ ******************************************************************** */
+function searchBill(){
   const pid = document.getElementById('billSearch').value.trim();
-  const rows = await getBill(pid);
+  const rows = DB.bills.filter(b=>b.patientId===pid);
   const tbl = document.getElementById('billTable');
-  if (!rows || !rows.length) { tbl.innerHTML='<tr><td>No bill</td></tr>'; return; }
-  tbl.innerHTML = rows.map(r=>`<tr><td>${r.service}</td><td>${(+r.charge).toFixed(2)}</td></tr>`).join('')
-           + `<tr><th>Balance</th><th>${(+rows[0].balance).toFixed(2)}</th></tr>`;
+  if(!rows.length){ tbl.innerHTML='<tr><td>No bill</td></tr>'; return; }
+  let tot = 0;
+  let html='';
+  rows.forEach(r=>{ html+=`<tr><td>${r.service}</td><td>${r.charge.toFixed(2)}</td></tr>`; tot+=r.charge; });
+  html+=`<tr><th>Total</th><th>${tot.toFixed(2)}</th></tr>`;
+  tbl.innerHTML = html;
 }
 </script>
-
-<!-- =========== 4.  JAVA CODE (compiled to hms.jar) ===========
-We expose one class HMS with static methods.
-Compile:
-   javac -cp . HMS.java
-   jar cf hms.jar HMS.class
-Then place hms.jar next to this html on any static file server.
-=============================================================== -->
-<!--
-// HMS.java
-import org.teavm.interop.Import;
-import org.teavm.interop.Export;
-import java.sql.*;
-import java.time.LocalDateTime;
-
-public class HMS {
-  private static Connection conn;
-
-  @Export
-  public static void init(Object dbHandle) {  // called from JS
-    conn = new SqlJsConnection(dbHandle);   // tiny wrapper we provide
-  }
-
-  @Export
-  public static String registerPatient(String json) {
-    try {
-      Json j = Json.parse(json);
-      String id = "P-" + System.currentTimeMillis()%1_000_000;
-      PreparedStatement ps = conn.prepareStatement(
-        "INSERT INTO patient(patient_id,full_name,age,gender,phone,email,address) VALUES (?,?,?,?,?,?,?)");
-      ps.setString(1,id); ps.setString(2,j.getString("fullName"));
-      ps.setInt(3,j.getInt("age")); ps.setString(4,j.getString("gender"));
-      ps.setString(5,j.getString("phone")); ps.setString(6,j.optString("email",""));
-      ps.setString(7,j.optString("address",""));
-      ps.executeUpdate();
-      return id;
-    } catch(Exception e){ return e.getMessage(); }
-  }
-
-  @Export
-  public static String scheduleAppointment(String json) {
-    try{
-      Json j = Json.parse(json);
-      PreparedStatement ps = conn.prepareStatement(
-        "INSERT INTO appointment(patient_id,doctor_id,dt,status) VALUES (?,?,?,?)");
-      ps.setString(1,j.getString("patientId"));
-      ps.setString(2,j.getString("doctorId"));
-      ps.setString(3,j.getString("dateTime"));
-      ps.setString(4,j.getString("status"));
-      ps.executeUpdate();
-      return "ok";
-    }catch(Exception e){ return e.getMessage(); }
-  }
-
-  @Export
-  public static String saveTriage(String json){ /* analogue */ return "ok"; }
-  @Export
-  public static String saveDiagnosis(String json){ return "ok"; }
-  @Export
-  public static String prescribe(String json){ return "ok"; }
-
-  @Export
-  public static String getBill(String patientId) {
-    try{
-      PreparedStatement ps = conn.prepareStatement(
-        "SELECT service_name,charge,balance FROM billing b JOIN service_item s ON b.billing_id=s.billing_id WHERE b.patient_id=?");
-      ps.setString(1,patientId);
-      ResultSet rs = ps.executeQuery();
-      StringBuilder sb = new StringBuilder("[");
-      while(rs.next()){
-        sb.append("{\"service\":\"").append(rs.getString(1))
-          .append("\",\"charge\":").append(rs.getBigDecimal(2))
-          .append(",\"balance\":").append(rs.getBigDecimal(3)).append("},");
-      }
-      if (sb.length()>1) sb.setLength(sb.length()-1);
-      return sb.append("]").toString();
-    }catch(Exception e){ return "[]"; }
-  }
-}
--->
-<!-- SqlJsConnection is a 50-line wrapper that implements java.sql.Driver
-against SQL.js – bundled inside hms.jar for brevity. -->
 </body>
 </html>
